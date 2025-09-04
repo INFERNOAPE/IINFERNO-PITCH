@@ -1,0 +1,588 @@
+# myNSU Prototype — Agent Starter Kit
+
+This single file gives you a **working scaffold** for your investor demo: a fake myNSU web app + a floating chatbot + a tiny local "agent" script that manages your demo content. Copy this whole project into a new folder and follow the README at the bottom.
+
+---
+
+## File Tree (what you'll have after setup)
+```
+prototype-mynsu/
+├─ package.json
+├─ README.md
+├─ server.js
+├─ setup.sh
+├─ scripts/
+│  └─ seed.js
+├─ agent/
+│  ├─ tasks.yaml
+│  └─ agent.mjs
+├─ data/
+│  ├─ faqs.json
+│  ├─ nav.json
+│  └─ students.json
+└─ public/
+   ├─ index.html
+   ├─ styles.css
+   └─ chatbot.js
+```
+
+---
+
+## package.json
+```json
+{
+  "name": "prototype-mynsu",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "seed": "node scripts/seed.js",
+    "agent": "node agent/agent.mjs run",
+    "agent:plan": "node agent/agent.mjs plan",
+    "agent:kb": "node agent/agent.mjs kb"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "nanoid": "^5.0.7",
+    "yaml": "^2.5.0"
+  }
+}
+```
+
+---
+
+## server.js (Node + Express: serves the fake portal + JSON APIs)
+```js
+import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const app = express();
+const PORT = process.env.PORT || 5173;
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+const loadJson = (p) => JSON.parse(fs.readFileSync(path.join(__dirname, p), 'utf8'));
+
+app.get('/api/faqs', (req, res) => {
+  res.json(loadJson('data/faqs.json'));
+});
+
+app.get('/api/nav', (req, res) => {
+  res.json(loadJson('data/nav.json'));
+});
+
+app.get('/api/student', (req, res) => {
+  res.json(loadJson('data/students.json')[0]);
+});
+
+app.listen(PORT, () => {
+  console.log(`myNSU prototype running → http://localhost:${PORT}`);
+});
+```
+
+---
+
+## public/index.html (fake myNSU with floating chatbot)
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>myNSU — Prototype</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="prototype-banner">PROTOTYPE — DEMO ONLY (Not the official NSU portal)</div>
+
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container-fluid">
+      <a class="navbar-brand fw-bold" href="#">myNSU</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExample" aria-controls="navbarsExample" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarsExample">
+        <ul id="topNav" class="navbar-nav me-auto mb-2 mb-lg-0">
+          <!-- Filled by JS from /api/nav -->
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container my-4">
+    <div class="row g-4">
+      <div class="col-12 col-lg-8">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">Dashboard</h5>
+            <p class="text-muted">Welcome to your demo dashboard. This data is fake and for demonstration only.</p>
+            <div id="studentCard" class="row g-3"></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h6 class="card-title">Announcements</h6>
+            <ul class="list-group list-group-flush">
+              <li class="list-group-item">Fall registration opens Sept 16.</li>
+              <li class="list-group-item">Financial Aid office hours extended this week.</li>
+              <li class="list-group-item">Homecoming tickets available Friday.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card shadow-sm mt-3">
+          <div class="card-body">
+            <h6 class="card-title">Quick Links</h6>
+            <div id="quickLinks" class="d-grid gap-2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Chatbot widget -->
+  <div id="chatbot-root"></div>
+  <script src="/chatbot.js"></script>
+  <script>
+    async function bootstrap() {
+      const nav = await fetch('/api/nav').then(r => r.json());
+      const student = await fetch('/api/student').then(r => r.json());
+
+      const navEl = document.getElementById('topNav');
+      nav.top.forEach(item => {
+        const li = document.createElement('li');
+        li.className = 'nav-item';
+        li.innerHTML = `<a class="nav-link" href="#${item.slug}">${item.label}</a>`;
+        navEl.appendChild(li);
+      });
+
+      const s = student;
+      const sc = document.getElementById('studentCard');
+      sc.innerHTML = `
+        <div class="col-12 col-md-6">
+          <div class="p-3 bg-light rounded-3">
+            <div class="fw-bold">Name</div>
+            <div>${s.firstName} ${s.lastName}</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="p-3 bg-light rounded-3">
+            <div class="fw-bold">Major</div>
+            <div>${s.major}</div>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="p-3 bg-light rounded-3">
+            <div class="fw-bold">Today</div>
+            <div>Classes: ${s.today.join(', ')}</div>
+          </div>
+        </div>`;
+
+      const ql = document.getElementById('quickLinks');
+      nav.quick.forEach(item => {
+        const a = document.createElement('a');
+        a.className = 'btn btn-outline-primary btn-sm';
+        a.href = `#${item.slug}`;
+        a.textContent = item.label;
+        ql.appendChild(a);
+      });
+    }
+    bootstrap();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+```
+
+---
+
+## public/styles.css (minimal styling + chatbot position)
+```css
+body { background: #f6f7fb; }
+.prototype-banner {
+  background: #222; color: #fff; text-align: center; padding: 6px 10px; font-size: 12px;
+}
+#chatbot-root { position: fixed; bottom: 16px; right: 16px; z-index: 9999; }
+.cb-card { width: 340px; box-shadow: 0 10px 24px rgba(0,0,0,.15); border-radius: 16px; overflow: hidden; }
+.cb-header { background: #5a2ea6; color: white; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; }
+.cb-body { background: white; max-height: 360px; overflow: auto; padding: 10px; }
+.cb-msg { margin: 8px 0; }
+.cb-msg.user { text-align: right; }
+.cb-input { display: flex; gap: 8px; border-top: 1px solid #eee; padding: 8px; background: #fafafa; }
+.cb-bubble { display: inline-block; padding: 8px 10px; border-radius: 12px; background: #f1f0ff; }
+.cb-bubble.user { background: #e7f1ff; }
+.cb-button { position: fixed; bottom: 16px; right: 16px; background: #5a2ea6; color: white; border: none; border-radius: 999px; padding: 14px 16px; box-shadow: 0 8px 20px rgba(0,0,0,.2); }
+```
+
+---
+
+## public/chatbot.js (rule‑based + demo nav + FAQ; lightweight and predictable)
+```js
+(async function () {
+  const root = document.getElementById('chatbot-root');
+  const faqs = await fetch('/api/faqs').then(r => r.json());
+  const nav = await fetch('/api/nav').then(r => r.json());
+
+  let open = false;
+  const btn = document.createElement('button');
+  btn.className = 'cb-button';
+  btn.textContent = 'Chat';
+  btn.onclick = toggle;
+  root.appendChild(btn);
+
+  const card = document.createElement('div');
+  card.className = 'cb-card';
+  card.style.display = 'none';
+  card.innerHTML = `
+    <div class="cb-header">
+      <strong>myNSU Assistant (Demo)</strong>
+      <button class="btn btn-sm btn-light">–</button>
+    </div>
+    <div class="cb-body" id="cbBody"></div>
+    <div class="cb-input">
+      <input id="cbInput" class="form-control form-control-sm" placeholder="Ask about registration, hours, grades…" />
+      <button id="cbSend" class="btn btn-primary btn-sm">Send</button>
+    </div>`;
+  root.appendChild(card);
+
+  card.querySelector('.btn-light').onclick = toggle;
+  card.querySelector('#cbSend').onclick = onSend;
+  card.querySelector('#cbInput').addEventListener('keydown', e => { if (e.key === 'Enter') onSend(); });
+
+  const body = card.querySelector('#cbBody');
+  greet();
+
+  function toggle() {
+    open = !open;
+    card.style.display = open ? 'block' : 'none';
+  }
+
+  function greet() {
+    addBot(`Hi! I can jump you to pages ("Take me to Financial Aid") and answer common questions ("When is registration?").`);
+    const chips = [
+      'Show me my grades',
+      'When is registration?',
+      'Financial Aid hours',
+      'Where do I pay my bill?'
+    ];
+    addBot(chips.map(c => `<button class="btn btn-outline-secondary btn-sm me-2 mt-1">${c}</button>`).join(' '));
+    [...body.querySelectorAll('button')].forEach(b => b.onclick = () => handle(b.textContent));
+  }
+
+  function onSend() {
+    const input = card.querySelector('#cbInput');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    addUser(text);
+    handle(text);
+  }
+
+  function handle(text) {
+    const t = text.toLowerCase();
+
+    // 1) Navigation intents (fast wins for demo)
+    const navHit = navMatch(t, nav);
+    if (navHit) {
+      addBot(`Opening <strong>${navHit.label}</strong>…`);
+      location.hash = navHit.slug; // simulate navigation
+      return;
+    }
+
+    // 2) FAQ intents
+    const faq = faqs.find(f =>
+      f.keywords.some(k => t.includes(k)) ||
+      t.includes(f.question.toLowerCase())
+    );
+    if (faq) {
+      addBot(`<div><strong>${faq.question}</strong><div class="text-muted small">${faq.answer}</div></div>`);
+      return;
+    }
+
+    // 3) Fallback demo response
+    addBot("I didn't catch that. Try: 'registration dates', 'financial aid hours', 'advisor appointment'.");
+  }
+
+  function navMatch(t, nav) {
+    const all = [...nav.top, ...nav.quick];
+    return all.find(item => {
+      return item.keywords.some(k => t.includes(k)) || t.includes(item.label.toLowerCase());
+    });
+  }
+
+  function addUser(msg) {
+    const d = document.createElement('div');
+    d.className = 'cb-msg user';
+    d.innerHTML = `<span class="cb-bubble user">${escapeHtml(msg)}</span>`;
+    body.appendChild(d); body.scrollTop = body.scrollHeight;
+  }
+
+  function addBot(html) {
+    const d = document.createElement('div');
+    d.className = 'cb-msg';
+    d.innerHTML = `<span class="cb-bubble">${html}</span>`;
+    body.appendChild(d); body.scrollTop = body.scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]+/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
+})();
+```
+
+---
+
+## data/faqs.json (scripted Q&A for predictable demo)
+```json
+[
+  {
+    "question": "When is registration?",
+    "answer": "Registration opens Sept 16 for continuing students and Sept 18 for new students.",
+    "keywords": ["register", "registration", "enroll", "enrollment"]
+  },
+  {
+    "question": "What are Financial Aid office hours?",
+    "answer": "Mon–Thu 8:00–4:30, Fri 8:00–12:00. This is demo data.",
+    "keywords": ["financial aid", "aid hours", "finaid", "scholarship"]
+  },
+  {
+    "question": "Where do I pay my bill?",
+    "answer": "Navigate to Student Accounts → Pay Bill.",
+    "keywords": ["pay", "bill", "tuition", "student accounts"]
+  },
+  {
+    "question": "How do I see my grades?",
+    "answer": "Go to Academics → Grades. The chatbot can jump you there.",
+    "keywords": ["grade", "grades", "transcript"]
+  }
+]
+```
+
+---
+
+## data/nav.json (menus + quick links + intent keywords)
+```json
+{
+  "top": [
+    { "label": "Dashboard", "slug": "dashboard", "keywords": ["home", "dashboard"] },
+    { "label": "Academics", "slug": "academics", "keywords": ["class", "classes", "schedule", "grades", "academics"] },
+    { "label": "Financial Aid", "slug": "financial-aid", "keywords": ["financial aid", "finaid", "scholarship", "aid"] },
+    { "label": "Student Accounts", "slug": "student-accounts", "keywords": ["bill", "pay", "student accounts", "payment"] },
+    { "label": "Advising", "slug": "advising", "keywords": ["advisor", "advising", "appointment"] }
+  ],
+  "quick": [
+    { "label": "Grades", "slug": "grades", "keywords": ["grades", "transcript"] },
+    { "label": "Schedule", "slug": "schedule", "keywords": ["schedule", "classes", "times"] },
+    { "label": "Pay Bill", "slug": "pay-bill", "keywords": ["pay bill", "tuition", "bill"] }
+  ]
+}
+```
+
+---
+
+## data/students.json (dummy student for the dashboard)
+```json
+[
+  {
+    "id": "S1234567",
+    "firstName": "Alex",
+    "lastName": "Rivera",
+    "major": "PPE & Homeland Security",
+    "today": ["HIST 2010", "PPE 3301", "HSEC 5100"],
+    "gpa": 3.4
+  }
+]
+```
+
+---
+
+## scripts/seed.js (quick way to refresh demo data)
+```js
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { nanoid } from 'nanoid';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dataDir = path.join(__dirname, '..', 'data');
+
+const students = [
+  { id: `S${nanoid(7)}`, firstName: 'Alex', lastName: 'Rivera', major: 'PPE & Homeland Security', today: ['HIST 2010', 'PPE 3301', 'HSEC 5100'], gpa: 3.4 },
+  { id: `S${nanoid(7)}`, firstName: 'Jordan', lastName: 'Kim', major: 'Computer Information Systems', today: ['CIS 2050', 'MATH 2100'], gpa: 3.2 }
+];
+
+fs.writeFileSync(path.join(dataDir, 'students.json'), JSON.stringify(students, null, 2));
+console.log('Seeded students.json with demo records.');
+```
+
+---
+
+## agent/tasks.yaml (your demo agent’s simple plan)
+```yaml
+plan:
+  - id: nav
+    title: Build menus & quick links
+    done: true
+  - id: faqs
+    title: Add FAQ answers students care about
+    done: true
+  - id: scripts
+    title: Write demo seed script for student data
+    done: true
+  - id: chatbot
+    title: Wire up rule-based chatbot with keywords
+    done: true
+  - id: investor-demo
+    title: Record before/after flow for demo deck
+    done: false
+kb:
+  registration_open: "Registration opens Sept 16 for continuing students; Sept 18 for new students. (Demo)"
+  finaid_hours: "Mon–Thu 8–4:30, Fri 8–12. (Demo)"
+```
+
+---
+
+## agent/agent.mjs (tiny CLI agent: prints plan, syncs KB, runs sanity checks)
+```js
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import YAML from 'yaml';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const tasksPath = path.join(__dirname, 'tasks.yaml');
+const kbTargets = [
+  path.join(__dirname, '..', 'data', 'faqs.json')
+];
+
+function loadYaml(p) { return YAML.parse(fs.readFileSync(p, 'utf8')); }
+function saveYaml(p, obj) { fs.writeFileSync(p, YAML.stringify(obj)); }
+
+function logHeader(title){
+  console.log(`\n=== ${title} ===`);
+}
+
+function run() {
+  const cmd = process.argv[2] || 'run';
+  if (cmd === 'plan') return showPlan();
+  if (cmd === 'kb') return syncKB();
+  return main();
+}
+
+function showPlan(){
+  const y = loadYaml(tasksPath);
+  logHeader('Demo Plan');
+  for (const step of y.plan) {
+    console.log(`${step.done ? '✔' : '•'} ${step.title}`);
+  }
+}
+
+function syncKB(){
+  const y = loadYaml(tasksPath);
+  const kb = y.kb || {};
+  const faqs = JSON.parse(fs.readFileSync(kbTargets[0], 'utf8'));
+  const up = [...faqs];
+  const ensure = (question, answer, keywords=[]) => {
+    const found = up.find(f => f.question === question);
+    if (found) { found.answer = answer; found.keywords = Array.from(new Set([...found.keywords, ...keywords])); }
+    else up.push({ question, answer, keywords });
+  };
+  ensure('When is registration?', kb.registration_open || 'See registrar site.', ['register','registration','enroll']);
+  ensure('What are Financial Aid office hours?', kb.finaid_hours || 'See financial aid site.', ['financial aid','hours','finaid']);
+  fs.writeFileSync(kbTargets[0], JSON.stringify(up, null, 2));
+  logHeader('Knowledge base synced → data/faqs.json');
+}
+
+function main(){
+  showPlan();
+  console.log('\nHealth checks:');
+  // Check that critical files exist
+  const required = [
+    path.join(__dirname, '..', 'public', 'index.html'),
+    path.join(__dirname, '..', 'public', 'chatbot.js'),
+    path.join(__dirname, '..', 'data', 'nav.json'),
+    path.join(__dirname, '..', 'data', 'faqs.json')
+  ];
+  let ok = true;
+  for (const f of required) {
+    if (!fs.existsSync(f)) { console.log('❌ Missing', path.relative(path.join(__dirname, '..'), f)); ok = false; }
+    else { console.log('✔', path.relative(path.join(__dirname, '..'), f)); }
+  }
+  if (!ok) {
+    console.log('\nFix missing files, then run: npm run dev');
+  } else {
+    console.log('\nLooks good. Start the server with: npm run dev');
+  }
+}
+
+run();
+```
+
+---
+
+## setup.sh (Mac-friendly helper; optional)
+```bash
+#!/usr/bin/env bash
+set -e
+if ! command -v node >/dev/null 2>&1; then
+  echo "Please install Node.js LTS first: https://nodejs.org"; exit 1;
+fi
+npm install
+npm run seed
+npm run agent
+echo "\n✅ Setup complete. Start with: npm run dev" 
+```
+
+---
+
+## README.md (copy this into your repo)
+```md
+# myNSU Prototype — Demo Only
+
+This is a **sandboxed clone** of the myNSU portal UI with **fake data** and a **floating chatbot**. It’s designed for investor demos.
+
+## Quickstart
+1. Install Node.js LTS.
+2. Clone/download this folder. In Terminal:
+   ```bash
+   cd prototype-mynsu
+   npm install
+   npm run seed
+   npm run dev
+   ```
+3. Open http://localhost:5173
+
+## The Chatbot (predictable demo)
+- Rule-based keyword matching mapped to **/data/faqs.json** and **/data/nav.json**.
+- Shows how we reduce clicks by jumping to target sections and answering FAQs.
+- For the investor pitch, demo a before/after: navigate manually, then ask the bot.
+
+## The Agent (tiny CLI)
+- `npm run agent` — prints the plan and runs health checks.
+- `npm run agent:plan` — shows the current demo plan from **agent/tasks.yaml**.
+- `npm run agent:kb` — syncs the knowledge base into **data/faqs.json**.
+
+## Security & Disclaimer
+- Big banner at the top: **Prototype — Demo Only**.
+- No real NSU systems are contacted; everything is local.
+- Dummy student data lives in **/data/students.json**.
+
+## Packaging for a demo
+- Keep it local (localhost) or put behind a password on a private instance.
+- If you host, configure a subdomain like `prototype.mynsu.edu` and require a password.
+
+## Next Steps (nice-to-haves)
+- Add a login screen that just gates access (no real auth).
+- Expand FAQ coverage and add scripted fallbacks.
+- Add a toggle to show a side-by-side “Before vs Using Chatbot” tour.
+- Integrate a lightweight LLM later for natural phrasing while preserving guardrails.
